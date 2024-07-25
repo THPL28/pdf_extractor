@@ -6,6 +6,7 @@ Este projeto é uma aplicação de extração de texto de arquivos PDF usando OC
 
 ## Estrutura do Projeto
 
+```plaintext
 pdf_extractor/
 │
 ├── README.md

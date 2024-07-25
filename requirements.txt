@@ -1,0 +1,8 @@
+
+#### 9. Arquivo de Dependências
+fastapi
+uvicorn
+pytesseract
+PyPDF2
+Pillow
+pdfplumber

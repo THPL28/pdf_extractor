@@ -38,6 +38,7 @@ pdf_extractor/
 └── app/
     ├── __init__.py
     └── api.py
+```
 
 ## Dependências
 

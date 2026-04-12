@@ -1,8 +1,14 @@
-
-#### 9. Arquivo de Dependências
 fastapi
 uvicorn
-pytesseract
+boto3
+kafka-python
+pyspark
 PyPDF2
+pytesseract
 Pillow
-pdfplumber
+prometheus-fastapi-instrumentator
+# AI Stack
+transformers
+torch
+torchvision
+pdf2image

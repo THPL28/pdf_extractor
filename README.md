@@ -1,300 +1,165 @@
-# 📄 PDF Extractor
+# 🚀 Distributed PDF Extraction Pipeline
 
-![Python](https://img.shields.io/badge/python-3.8%2B-blue)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-green)
-![License](https://img.shields.io/badge/license-MIT-black)
-![Status](https://img.shields.io/badge/status-production--ready-brightgreen)
-
-> 🚀 API moderna para extração de texto de PDFs com OCR, baseada em **Clean Architecture**, pronta para produção e altamente escalável.
+Uma solução de alta performance para extração distribuída de texto de milhões de PDFs, utilizando uma arquitetura orientada a eventos, processamento distribuído (Apache Spark) e sistemas de mensageria escaláveis (Kafka).
 
 ---
 
-## 🎯 Visão Geral
+## 🏗️ Design da Arquitetura
 
-O **PDF Extractor** é uma API projetada para extrair texto de documentos PDF de forma inteligente, suportando:
-
-- 📑 PDFs com texto nativo  
-- 🖼️ PDFs escaneados (imagens)  
-- 🔀 Documentos híbridos  
-
-💡 Ideal para:
-- RPA
-- ETL de documentos
-- Sistemas financeiros
-- Processamento jurídico
-- Data pipelines
-
----
-
-## 🧠 Arquitetura
-
-Baseada em **Clean Architecture**, garantindo:
-
-- Baixo acoplamento  
-- Alta coesão  
-- Fácil manutenção  
-- Testabilidade  
-
----
-
-### 📂 Estrutura do Projeto
-
-```bash
-pdf_extractor/
-│
-├── app/                # API (FastAPI)
-├── core/               # Regras de negócio
-│   ├── entities/
-│   ├── interfaces/
-│   └── use_cases/
-│
-├── infrastructure/     # Implementações externas
-│   ├── ocr/
-│   └── pdf/
-│
-├── config/
-├── main.py
-└── requirements.txt
-```
-
----
-
-## 🔄 Fluxo da Aplicação
+O sistema segue uma arquitetura poliglota e distribuída, otimizada para throughput massivo.
 
 ```mermaid
-flowchart TD
-    A[Upload PDF] --> B[FastAPI]
-    B --> C[Use Case: Extract Text]
-    C --> D{Possui texto?}
-    D -->|Sim| E[PyPDF2]
-    D -->|Não| F[Converter para imagem]
-    F --> G[Tesseract OCR]
-    E --> H[Texto final]
-    G --> H
+graph TD
+    User([Usuário/Cliente]) -->|Upload PDF| API[Ingestion API - FastAPI]
+    API -->|Salva Binário| S3[(Object Storage - MinIO)]
+    API -->|Notifica Evento| Kafka{Kafka Broker}
+    
+    subgraph Cluster Spark
+        Worker1[Spark Worker 1]
+        Worker2[Spark Worker 2]
+        WorkerN[Spark Worker N]
+    end
+    
+    Kafka -->|Consome Eventos| SparkMaster[Spark Master]
+    SparkMaster -->|Distribui Tasks| Worker1
+    SparkMaster -->|Distribui Tasks| Worker2
+    SparkMaster -->|Distribui Tasks| WorkerN
+    
+    Worker1 -->|Lê PDF| S3
+    Worker2 -->|Lê PDF| S3
+    WorkerN -->|Lê PDF| S3
+    
+    subgraph "Hybrid Extraction Strategy"
+        Native[Native Strategy - PyPDF2]
+        OCR[OCR Strategy - Tesseract]
+        AI[AI Strategy - LayoutLM]
+    end
+    
+    Worker1 -.->|Estratégia Escolhida| Native
+    Worker1 -.->|Fallback OCR| OCR
 ```
 
 ---
 
-## ⚙️ Stack Tecnológica
+## 🔄 Fluxograma de Processamento
 
-- **FastAPI**
-- **Uvicorn**
-- **PyPDF2**
-- **Tesseract OCR**
-- **Pillow**
+Abaixo, o fluxo detalhado de como um documento percorre o sistema:
+
+```mermaid
+sequenceDiagram
+    participant U as Usuário
+    participant A as Ingestion API
+    participant M as MinIO (S3)
+    participant K as Kafka
+    participant S as Spark Cluster
+    
+    U->>A: POST /upload (documento.pdf)
+    A->>A: Validação de Formato
+    A->>M: Upload do binário (Bucket raw)
+    M-->>A: OK (storage_path)
+    A->>K: Envia Mensagem {id, path, timestamp}
+    A-->>U: 202 Accepted {request_id}
+    
+    Note over S: Spark Streaming Poll
+    S->>K: Consome Mensagem
+    S->>M: Baixa Documento (storage_path)
+    S->>S: Processador de Estratégias (Factory)
+    alt PDF Nativo
+        S->>S: Extração Native (Rápido)
+    else PDF Imagem / Scan
+        S->>S: OCR Process (Tesseract)
+    end
+    S->>S: Enriquecimento de Dados
+    S->>M: Salva Resultado (JSON/TXT)
+```
 
 ---
 
-## 🚀 Quick Start
+## 🛠️ Stack Tecnológica
 
-### 🔧 Pré-requisitos
-
-- Python 3.8+
-- Tesseract instalado
+| Camada | Tecnologia | Papel Principal |
+| :--- | :--- | :--- |
+| **Interface** | FastAPI | Ingestão e Validação assíncrona |
+| **Broker** | Apache Kafka | Desacoplamento e Buffer de carga |
+| **Compute** | Apache Spark | Processamento paralelo e distribuído |
+| **Storage** | MinIO (S3) | Armazenamento de objetos persistente |
+| **OCR** | Tesseract | Extração de texto de imagens |
+| **Monitoramento** | Prometheus | Coleta de métricas (Kafka/API) |
+| **Dashboard** | Grafana | Visualização de saúde do sistema |
 
 ---
 
-### 1. Clone o projeto
+## 🚀 Comandos e Exemplos
 
+### 1. Inicialização Completa
+Para subir todo o ecossistema (API, Kafka, Spark, MinIO, Grafana):
 ```bash
-git clone https://github.com/THPL28/pdf_extractor.git
-cd pdf_extractor
+docker-compose up -d --build
 ```
 
----
+### 2. Configuração de Dependências OCR (Necessário nos Workers)
+O Spark necessita do motor Tesseract e bibliotecas Python em todos os nós:
+```powershell
+docker-compose exec --user root spark-master sh -c "apt-get update && apt-get install -y tesseract-ocr && pip install boto3 PyPDF2 pytesseract Pillow"
+docker-compose exec --user root spark-worker sh -c "apt-get update && apt-get install -y tesseract-ocr && pip install boto3 PyPDF2 pytesseract Pillow"
+```
 
-### 2. Instale dependências
+### 3. Submissão do Job Spark Streaming
+```powershell
+docker-compose exec --user root spark-master env HOME=/tmp USER=spark spark-submit \
+  --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1 \
+  /app/spark_jobs/extraction_job.py
+```
 
+### 4. Exemplo de Ingestão via cURL
 ```bash
-pip install -r requirements.txt
+curl -X 'POST' \
+  'http://localhost:8000/upload' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: multipart/form-data' \
+  -F 'file=@documento.pdf'
 ```
 
 ---
 
-### 3. Configure o OCR
+## 📊 KPIs e Métricas (Observabilidade)
 
-```python
-# config/config.py
-TESSERACT_CMD = r"/caminho/para/tesseract"
+O sistema exporta métricas em tempo real que podem ser visualizadas no **Grafana (Porta 3000)**.
+
+### Indicadores de Performance (KPIs)
+*   **Throughput (Docs/min):** Volume de documentos processados pelo cluster Spark por unidade de tempo.
+*   **Kafka Consumer Lag:** Diferença entre mensagens produzidas e mensagens processadas. *Crítico para identificar gargalos nos Workers.*
+*   **Taxa de Sucesso de Extração:** Percentual de PDFs processados vs. Falhas (ex: arquivos corrompidos).
+*   **Latência E2E (End-to-End):** Tempo médio desde o upload até a disponibilidade do texto extraído.
+*   **Ocupação de CPU/Memória:** Monitoramento da saúde dos Workers Spark.
+
+---
+
+## 📐 Design de Implementação
+
+O projeto aplica padrões de projeto (GoF) para garantir manutenibilidade:
+
+1.  **Strategy Pattern**: Implementado na pasta `core/interfaces`, permite que novas formas de extração (ex: AWS Textract) sejam adicionadas sem alterar o código do Spark.
+2.  **Factory Pattern**: Localizado na `infrastructure/pdf`, decide dinamicamente a melhor estratégia baseado em metadados do arquivo.
+3.  **Command Pattern**: As tarefas enviadas ao Kafka agem como comandos encapsulados para os processadores remotos.
+
+---
+
+## 📁 Estrutura do Projeto
+
+```text
+/
+├── services/ingestion_api     # API FastAPI (Producer)
+├── spark_jobs/                # Scripts Spark Streaming (Consumer)
+├── core/                      # Lógica de negócio e interfaces
+├── infrastructure/            # Implementações (S3, OCR, AI Strategy)
+├── config/                    # Configurações globais
+└── infrastructure/monitoring  # Configurações Prometheus/Grafana
 ```
 
 ---
 
-### 4. Execute a API
-
-```bash
-uvicorn app.api:app --reload
-```
-
----
-
-## 🐳 Rodando com Docker
-
-### 📦 Dockerfile
-
-```dockerfile
-FROM python:3.10-slim
-
-WORKDIR /app
-
-COPY . .
-
-RUN apt-get update && \
-    apt-get install -y tesseract-ocr && \
-    pip install --no-cache-dir -r requirements.txt
-
-CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
----
-
-### ▶️ Build e Run
-
-```bash
-docker build -t pdf-extractor .
-docker run -p 8000:8000 pdf-extractor
-```
-
----
-
-## 📡 API
-
-### 🔗 Swagger
-
-👉 http://localhost:8000/docs
-
----
-
-### 📌 Endpoint
-
-#### `POST /extract_text`
-
----
-
-### 📥 Request
-
-```bash
-multipart/form-data
-file: PDF
-```
-
----
-
-### 📤 Response
-
-```json
-{
-  "filename": "arquivo.pdf",
-  "text": "Texto extraído..."
-}
-```
-
----
-
-### 🧪 Exemplo com cURL
-
-```bash
-curl -X POST http://localhost:8000/extract_text \
-  -F "file=@documento.pdf"
-```
-
----
-
-## 🧪 Exemplo com Python
-
-```python
-import requests
-
-url = "http://localhost:8000/extract_text"
-
-files = {"file": open("documento.pdf", "rb")}
-
-response = requests.post(url, files=files)
-
-print(response.json())
-```
-
----
-
-## 💡 Estratégia de Processamento
-
-O sistema utiliza abordagem híbrida:
-
-1. 🔍 Extração direta com PyPDF2  
-2. 🧠 Fallback para OCR com Tesseract  
-3. ⚡ Retorno otimizado  
-
----
-
-## 📊 Casos de Uso
-
-- 📄 Extração de notas fiscais  
-- ⚖️ Documentos jurídicos  
-- 🏦 Processamento bancário  
-- 📊 Pipelines de dados  
-- 🤖 Automação RPA  
-
----
-
-## 🔮 Roadmap
-
-- [ ] OCR multilíngue  
-- [ ] Processamento assíncrono (Celery)  
-- [ ] Suporte a tabelas  
-- [ ] ElasticSearch  
-- [ ] Autenticação JWT  
-- [ ] Deploy em cloud (AWS/GCP)  
-
----
-
-## 🚀 Deploy (Exemplo AWS)
-
-```bash
-# Build imagem
-docker build -t pdf-extractor .
-
-# Tag para ECR
-docker tag pdf-extractor:latest <aws_account_id>.dkr.ecr.region.amazonaws.com/pdf-extractor
-
-# Push
-docker push <aws_account_id>.dkr.ecr.region.amazonaws.com/pdf-extractor
-```
-
----
-
-## 🤝 Contribuição
-
-```bash
-# Fork
-# Crie sua branch
-git checkout -b feature/minha-feature
-
-# Commit
-git commit -m "feat: nova feature"
-
-# Push
-git push origin feature/minha-feature
-```
-
----
-
-## 📜 Licença
-
-MIT License
-
----
-
-## 👨‍💻 Autor
-
-**Tiago Henrique Looze**  
-🔗 https://github.com/THPL28  
-
----
-
-## ⭐ Support
-
-Se esse projeto te ajudou:
-
-⭐ Deixe uma estrela no repositório  
-📢 Compartilhe com outros devs  
-🚀 Contribua com melhorias
+## 📈 Roadmap
+- [ ] Implementação do **LayoutLM** para reconhecimento de campos chave em formulários.
+- [ ] Persistência dos resultados em um banco de dados NoSQL (ex: **MongoDB** ou **Elasticsearch**).
+- [ ] Implementação de **Dead Letter Queue (DLQ)** para mensagens que falham repetidamente.
